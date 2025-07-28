@@ -1,7 +1,21 @@
 export default async function handler(req, res) {
+    // Handle CORS preflight requests
+    if (req.method === 'OPTIONS') {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.status(200).end();
+      return;
+    }
+  
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
+  
+    // Set CORS headers for all responses
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   
     const COZE_API_KEY = process.env.COZE_API_KEY;
   
@@ -19,11 +33,11 @@ export default async function handler(req, res) {
   
       console.log("Coze Status:", cozeRes.status);
   
-      res.setHeader('Access-Control-Allow-Origin', '*');
-  
       // Handle stream: true
       if (req.body.stream === true && cozeRes.body) {
         res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
   
         const reader = cozeRes.body.getReader();
         const decoder = new TextDecoder();
@@ -47,4 +61,3 @@ export default async function handler(req, res) {
       res.status(500).json({ error: 'Proxy Error', details: err.message });
     }
   }
-  
