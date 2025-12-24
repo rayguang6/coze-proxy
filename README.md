@@ -16,9 +16,12 @@ cp .env.example .env
 
 3. Add your API keys to `.env`:
 ```
-COZE_API_KEY=your_coze_api_key_here
-DEEPSEEK_API_KEY=your_deepseek_api_key_here
+COZE_API_KEY=your_coze_api_key_here (optional, only needed if USE_COZE=true)
+DEEPSEEK_API_KEY=your_deepseek_api_key_here (required)
+USE_COZE=false (optional, defaults to false - set to 'true' to use Coze first with DeepSeek fallback)
 ```
+
+**Note**: By default (`USE_COZE=false` or not set), the proxy routes directly to DeepSeek API, skipping Coze entirely. Set `USE_COZE=true` if you want to use Coze first with automatic fallback to DeepSeek.
 
 ## Running Locally
 
@@ -81,8 +84,9 @@ curl -X POST http://localhost:3000/api/relay \
 1. Push your code to GitHub
 2. Import the project in Vercel
 3. **Important**: Add environment variables in Vercel project settings:
-   - `COZE_API_KEY` (optional)
-   - `DEEPSEEK_API_KEY` (required for fallback)
+   - `DEEPSEEK_API_KEY` (required)
+   - `COZE_API_KEY` (optional, only needed if `USE_COZE=true`)
+   - `USE_COZE` (optional, set to `true` to use Coze first with DeepSeek fallback, defaults to `false`)
 4. Deploy - Vercel will automatically detect the `api/` folder as serverless functions
 
 The endpoint will be available at: `https://your-project.vercel.app/api/relay`
@@ -91,8 +95,17 @@ The endpoint will be available at: `https://your-project.vercel.app/api/relay`
 
 ## How It Works
 
+By default (`USE_COZE=false` or not set):
+1. The proxy routes **directly to DeepSeek API** (no Coze attempt)
+2. All requests are handled by DeepSeek
+3. CORS headers are properly set, avoiding CORS issues from direct frontend calls
+
+If `USE_COZE=true`:
 1. The proxy first attempts to call the Coze API
 2. If Coze fails (missing key, error, or non-ok response), it automatically falls back to DeepSeek API
 3. The response format is maintained regardless of which API is used
-4. Your existing frontend/extension code will work without any changes
+
+In both modes:
+- Your existing frontend/extension code will work without any changes
+- The proxy handles all CORS headers properly
 
