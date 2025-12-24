@@ -14,14 +14,18 @@ npm install
 cp .env.example .env
 ```
 
-3. Add your API keys to `.env`:
+3. Add your API keys to `.env` (see `.env.example` for reference):
 ```
-COZE_API_KEY=your_coze_api_key_here (optional, only needed if USE_COZE=true)
 DEEPSEEK_API_KEY=your_deepseek_api_key_here (required)
+COZE_API_KEY=your_coze_api_key_here (optional, only needed if USE_COZE=true)
 USE_COZE=false (optional, defaults to false - set to 'true' to use Coze first with DeepSeek fallback)
+COZE_API_URL=https://open.coze.com/open_api/v2/chat (optional, override if your Coze API uses a different endpoint)
 ```
 
-**Note**: By default (`USE_COZE=false` or not set), the proxy routes directly to DeepSeek API, skipping Coze entirely. Set `USE_COZE=true` if you want to use Coze first with automatic fallback to DeepSeek.
+**Note**: 
+- By default (`USE_COZE=false` or not set), the proxy routes directly to DeepSeek API, skipping Coze entirely. 
+- Set `USE_COZE=true` if you want to use Coze first with automatic fallback to DeepSeek.
+- **Coze format requests**: When `USE_COZE=true`, the proxy attempts Coze API first. If it fails, automatically falls back to DeepSeek (with format conversion). This ensures your Chrome extension always gets a response without handling fallback logic itself.
 
 ## Running Locally
 
@@ -95,17 +99,51 @@ The endpoint will be available at: `https://your-project.vercel.app/api/relay`
 
 ## How It Works
 
-By default (`USE_COZE=false` or not set):
-1. The proxy routes **directly to DeepSeek API** (no Coze attempt)
-2. All requests are handled by DeepSeek
-3. CORS headers are properly set, avoiding CORS issues from direct frontend calls
+### Architecture
 
-If `USE_COZE=true`:
-1. The proxy first attempts to call the Coze API
-2. If Coze fails (missing key, error, or non-ok response), it automatically falls back to DeepSeek API
-3. The response format is maintained regardless of which API is used
+The proxy is organized into modular components:
+- **`src/handlers/relay.js`** - Main request handler and routing logic
+- **`src/services/cozeApi.js`** - Coze API client with timeout handling
+- **`src/services/deepseekApi.js`** - DeepSeek API client
+- **`src/services/streamingHandler.js`** - Streaming response handling and format conversion
+- **`src/utils/formatters.js`** - Format detection and conversion utilities
+- **`src/config/index.js`** - Configuration management and validation
+- **`src/middleware/`** - Request validation and CORS middleware
 
-In both modes:
-- Your existing frontend/extension code will work without any changes
-- The proxy handles all CORS headers properly
+### Request Flow
+
+**For Coze format requests** (from Chrome extension):
+1. If `USE_COZE=true` and Coze API key is configured:
+   - Attempts to call Coze API with original payload
+   - If successful → returns Coze response (pass-through)
+   - If fails → automatically converts to DeepSeek format and calls DeepSeek API
+   - Converts DeepSeek response back to Coze SSE format for extension compatibility
+2. If `USE_COZE=false` or Coze API key not configured:
+   - Converts Coze format to DeepSeek format
+   - Calls DeepSeek API directly
+   - Converts response back to Coze SSE format
+
+**For DeepSeek format requests**:
+- Routes directly to DeepSeek API (no Coze attempt, as conversion would be complex)
+- Returns DeepSeek format response
+
+### Key Features
+
+- ✅ **Automatic fallback**: All fallback logic is handled server-side, Chrome extension never needs to handle errors
+- ✅ **Format conversion**: Seamlessly converts between Coze and DeepSeek formats
+- ✅ **Streaming support**: Handles both streaming and non-streaming responses
+- ✅ **Request validation**: Validates request size and format
+- ✅ **Timeout handling**: API calls have configurable timeouts (default: 30s)
+- ✅ **Error handling**: Comprehensive error handling with clear error messages
+- ✅ **CORS**: Properly configured CORS headers
+
+### Environment Variables
+
+- `DEEPSEEK_API_KEY` (required) - Your DeepSeek API key
+- `COZE_API_KEY` (optional) - Your Coze API key (required if `USE_COZE=true`)
+- `USE_COZE` (optional) - Set to `'true'` to enable Coze API with DeepSeek fallback, defaults to `'false'`
+- `COZE_API_URL` (optional) - Override Coze API endpoint if needed
+- `DEEPSEEK_API_URL` (optional) - Override DeepSeek API endpoint if needed
+- `REQUEST_TIMEOUT` (optional) - API request timeout in milliseconds (default: 30000)
+- `MAX_REQUEST_SIZE` (optional) - Maximum request size in bytes (default: 10485760 = 10MB)
 
