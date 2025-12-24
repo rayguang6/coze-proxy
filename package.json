@@ -1,12 +1,21 @@
 {
   "name": "coze-proxy",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Proxy server for Coze API with DeepSeek fallback",
+  "main": "server.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node server.js",
+    "start": "node server.js",
+    "test": "node test.js",
+    "vercel": "vercel dev"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1"
+  }
 }

@@ -18,42 +18,127 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   
     const COZE_API_KEY = process.env.COZE_API_KEY;
+    const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
   
-    try {
-      console.log("Incoming Payload:", req.body);
-  
-      const cozeRes = await fetch('https://api.coze.cn/v3/chat', {
+    // Helper function to call DeepSeek API
+    async function callDeepSeek() {
+      if (!DEEPSEEK_API_KEY) {
+        throw new Error('DeepSeek API key not configured');
+      }
+
+      // Transform Coze request format to DeepSeek format
+      const deepseekPayload = {
+        model: req.body.model || 'deepseek-chat',
+        messages: req.body.messages || [],
+        stream: req.body.stream || false,
+        temperature: req.body.temperature,
+        max_tokens: req.body.max_tokens,
+      };
+
+      console.log("Calling DeepSeek API with payload:", deepseekPayload);
+
+      const deepseekRes = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${COZE_API_KEY}`,
+          'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(req.body),
+        body: JSON.stringify(deepseekPayload),
       });
-  
-      console.log("Coze Status:", cozeRes.status);
-  
-      // Handle stream: true
-      if (req.body.stream === true && cozeRes.body) {
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-  
-        const reader = cozeRes.body.getReader();
-        const decoder = new TextDecoder();
-  
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          res.write(chunk);
+
+      if (!deepseekRes.ok) {
+        const errorText = await deepseekRes.text();
+        throw new Error(`DeepSeek API error: ${deepseekRes.status} - ${errorText}`);
+      }
+
+      return deepseekRes;
+    }
+
+    // Helper function to handle streaming response
+    async function handleStreamingResponse(apiRes) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      const reader = apiRes.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        res.write(chunk);
+      }
+
+      res.end();
+    }
+
+    // Helper function to handle non-streaming response
+    async function handleNonStreamingResponse(apiRes) {
+      const data = await apiRes.json();
+      res.status(apiRes.status).json(data);
+    }
+
+    try {
+      console.log("Incoming Payload:", req.body);
+
+      // Try Coze API first
+      let cozeRes;
+      let useDeepSeek = false;
+
+      try {
+        if (!COZE_API_KEY) {
+          console.warn("Coze API key not configured, using DeepSeek");
+          useDeepSeek = true;
+        } else {
+          cozeRes = await fetch('https://api.coze.cn/v3/chat', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${COZE_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(req.body),
+          });
+
+          console.log("Coze Status:", cozeRes.status);
+
+          // Check if Coze API call failed
+          if (!cozeRes.ok) {
+            const errorText = await cozeRes.text();
+            console.error("Coze API failed:", cozeRes.status, errorText);
+            useDeepSeek = true;
+          }
         }
-  
-        res.end();
+      } catch (cozeErr) {
+        console.error("Coze API error:", cozeErr.message);
+        useDeepSeek = true;
+      }
+
+      // If Coze failed or not configured, fallback to DeepSeek
+      if (useDeepSeek) {
+        console.log("Using DeepSeek API");
+        
+        if (!DEEPSEEK_API_KEY) {
+          return res.status(500).json({ 
+            error: 'No API key available', 
+            details: 'Both Coze and DeepSeek API keys are missing or Coze failed and DeepSeek key is missing' 
+          });
+        }
+
+        const deepseekRes = await callDeepSeek();
+
+        if (req.body.stream === true && deepseekRes.body) {
+          await handleStreamingResponse(deepseekRes);
+        } else {
+          await handleNonStreamingResponse(deepseekRes);
+        }
       } else {
-        // stream: false or no streaming supported
-        const data = await cozeRes.json();
-        res.status(cozeRes.status).json(data);
+        // Use Coze response
+        if (req.body.stream === true && cozeRes.body) {
+          await handleStreamingResponse(cozeRes);
+        } else {
+          await handleNonStreamingResponse(cozeRes);
+        }
       }
   
     } catch (err) {
